@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Talk With Anyone</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="header">
+        <h1>Talk With Anyone</h1>
+        <div>
+            <button id="toggleSidebarLeft" class="btn btn-outline sidebar-toggle" onclick="LayoutModule.toggle('left')" data-i18n-title="sidebarToggleLeft" title="收起/展开左侧栏">◧</button>
+            <button id="toggleSidebarRight" class="btn btn-outline sidebar-toggle" onclick="LayoutModule.toggle('right')" data-i18n-title="sidebarToggleRight" title="收起/展开右侧栏">◨</button>
+            <button id="langToggleBtn" class="btn btn-outline"></button>
+            <button class="btn btn-outline" onclick="ChatModule.clearCurrent()" data-i18n="clearChat">清空对话</button>
+        </div>
+    </div>
+
+    <div class="auto-chat-indicator" id="autoChatIndicator">
+        <span class="dot"></span>
+        <span data-i18n="autoChatting">AI 自聊中...</span>
+        <button class="btn btn-danger" style="padding: 4px 12px; font-size: 12px;" onclick="AutoChatModule.stop()" data-i18n="stop">停止</button>
+    </div>
+
+    <div class="main">
+        <div class="left-sidebar">
+            <div class="sidebar-tab" onclick="ConversationModule.create()" title="新建对话" data-i18n-title="newChatTitle">
+                <h3 data-i18n="newChat">＋ 新建对话</h3>
+            </div>
+
+            <div class="sidebar-tab" onclick="toggleTab('ttsTab')">
+                <h3 data-i18n="ttsEngine">TTS 引擎 ▾</h3>
+            </div>
+            <div class="tab-content" id="ttsTab">
+                <div class="config-section">
+                    <select id="ttsEngine" onchange="switchTTSEngine()" style="width:100%;">
+                        <option value="edge">edge-tts</option>
+                        <option value="moss">MOSS-TTS (0.1B)</option>
+                        <option value="qwen3">Qwen3-TTS</option>
+                        <option value="qwen3-clone" data-i18n="qwen3Clone">Qwen3-Clone (声音克隆)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="sidebar-tab" onclick="toggleTab('customVoiceTab')">
+                <h3 data-i18n="customVoice">自定义音色 ▾</h3>
+            </div>
+            <div class="tab-content" id="customVoiceTab">
+                <div class="config-section">
+                    <button class="btn btn-outline" style="width:100%;font-size:13px;" onclick="CustomVoiceModule.showModal()" data-i18n="addVoice">+ 添加音色</button>
+                </div>
+                <div id="customVoiceList"></div>
+            </div>
+
+            <div class="sidebar-tab" onclick="toggleTab('convTab')">
+                <h3 data-i18n="convManage">对话管理 ▾</h3>
+            </div>
+            <div class="tab-content" id="convTab">
+                <div class="config-section" style="margin-bottom:8px;">
+                    <input type="text" id="convSearchInput" placeholder="搜索对话..." style="width:100%;padding:6px 10px;font-size:12px;" oninput="ConversationModule.filterByKeyword(this.value)" data-i18n-placeholder="searchConv">
+                </div>
+                <div id="conversationList" class="conv-list"></div>
+            </div>
+
+            <div class="sidebar-tab" onclick="TTSStudioModule.show()">
+                <h3 data-i18n="speechSynthesis">语音合成</h3>
+            </div>
+
+            <div class="sidebar-tab" onclick="STTStudioModule.show()">
+                <h3 data-i18n="speechToText">语音转文本</h3>
+            </div>
+        </div>
+
+        <div class="chat-area">
+            <div class="messages" id="messages"></div>
+
+            <div class="controls">
+                <button class="btn btn-outline" onclick="toggleTTSReadUser()">
+                    <span id="ttsUserIcon">🔇</span> <span data-i18n="userInputTTS">用户输入TTS</span>
+                </button>
+                <button class="btn btn-outline" onclick="toggleTTSReadAI()">
+                    <span id="ttsAIIcon">🔊</span> <span data-i18n="aiReplyTTS">AI回复TTS</span>
+                </button>
+                <button class="btn btn-outline" onclick="TTSModule.stop()" data-i18n="stopReading">停止朗读</button>
+                <button class="btn btn-outline" id="autoChatBtn" onclick="AutoChatModule.start()" data-i18n="autoChat">AI自聊</button>
+                <button class="btn btn-outline btn-danger" id="stopAutoChatBtn" onclick="AutoChatModule.stop()" style="display:none;" data-i18n="stopAutoChat">停止自聊</button>
+                <button id="phoneBtn" class="btn btn-outline" onclick="PhoneModule.start()" title="电话模式" data-i18n-title="phoneMode">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="margin-right:4px;">
+                        <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+                    </svg>
+                    <span data-i18n="phone">电话</span>
+                </button>
+            </div>
+
+            <div class="input-area">
+                <div class="input-row">
+                    <textarea id="userInput" rows="1" placeholder="输入消息..." data-i18n-placeholder="inputMsg"></textarea>
+                    <button class="btn btn-mic" id="micBtn"
+                            onmousedown="MicModule.startRecording()"
+                            onmouseup="MicModule.onRelease()"
+                            onmouseleave="MicModule.onRelease()"
+                            title="按住说话" data-i18n-title="holdToTalk">🎤</button>
+                    <button class="btn btn-mic btn-send" id="sendBtn" onclick="ChatModule.sendMessage()" title="发送" data-i18n-title="send" aria-label="发送">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 8h-5v10h-6V11H4z"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <div class="config-section">
+                <h3 data-i18n="charSelect">角色选择</h3>
+                <select id="characterSelect" onchange="CharacterModule.select()" oncontextmenu="CharacterModule.showContextMenu(event)" style="width:100%;margin-bottom:8px;"></select>
+                <div class="btn-row" style="display:flex;gap:8px;">
+                    <button class="btn btn-outline" style="flex:1;" onclick="CharacterModule.showAdd()" data-i18n="addChar">新增角色</button>
+                    <button class="btn btn-outline" style="flex:1;" onclick="CharacterModule.delete()" data-i18n="delChar">删除角色</button>
+                </div>
+            </div>
+
+            <div class="config-section">
+                <h3 data-i18n="aiRolePrompt">AI 角色设定</h3>
+                <textarea id="aiRolePrompt" placeholder="设定 AI 的角色和性格..." data-i18n-placeholder="aiRolePlaceholder"></textarea>
+                <button class="btn btn-outline" style="width:100%;margin-top:8px;" onclick="CharacterModule.savePrompt()" data-i18n="saveRolePrompt">保存角色设定</button>
+            </div>
+
+            <div class="config-section">
+                <h3 data-i18n="charAvatar">角色头像</h3>
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <img id="aiAvatarPreview" src="" style="width:60px;height:60px;border-radius:8px;object-fit:cover;background:#f0f0f0;" />
+                    <div>
+                        <button class="btn btn-outline" onclick="AvatarModule.showUploadDialog('ai')" data-i18n="chooseAvatar">选择头像</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="config-section">
+                <h3 data-i18n="charVoice">角色音色</h3>
+                <select id="aiVoice" style="width:100%;"></select>
+                <button class="btn btn-outline" style="width:100%;margin-top:8px;" onclick="CharacterModule.saveVoice()" data-i18n="confirmVoice">确定音色</button>
+            </div>
+
+            <div class="config-section">
+                <h3 data-i18n="userName">用户名称</h3>
+                <input type="text" id="userName" placeholder="设定你的名称" style="width:100%;" data-i18n-placeholder="userNamePlaceholder">
+                <button class="btn btn-outline" style="width:100%;margin-top:8px;" onclick="saveUserName()" data-i18n="saveUserName">保存名称</button>
+            </div>
+
+            <div class="config-section">
+                <h3 data-i18n="userAvatar">用户头像</h3>
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <img id="userAvatarPreview" src="" style="width:60px;height:60px;border-radius:8px;object-fit:cover;background:#f0f0f0;" />
+                    <div>
+                        <button class="btn btn-outline" onclick="AvatarModule.showUploadDialog('user')" data-i18n="chooseAvatar">选择头像</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="config-section">
+                <h3 data-i18n="userRolePrompt">用户角色设定</h3>
+                <textarea id="userRolePrompt" placeholder="设定用户的角色..." data-i18n-placeholder="userRolePlaceholder"></textarea>
+                <button class="btn btn-outline" style="width:100%;margin-top:8px;" onclick="saveUserPrompt()" data-i18n="saveUserPrompt">保存用户设定</button>
+            </div>
+
+            <div class="config-section">
+                <h3 data-i18n="userVoice">用户音色</h3>
+                <select id="userVoice" style="width:100%;"></select>
+                <button class="btn btn-outline" style="width:100%;margin-top:8px;" onclick="saveUserVoice()" data-i18n="confirmVoice">确定音色</button>
+            </div>
+
+            <div class="config-section">
+                <h3 data-i18n="llmSettings">LLM 设置</h3>
+                <label data-i18n="backend">后端</label>
+                <select id="llmBackend" onchange="onLLMBackendChange()">
+                    <option value="local" data-i18n="backendLocal">本地 (llama-server)</option>
+                    <option value="ollama">Ollama</option>
+                    <option value="openai" data-i18n="backendOpenai">OpenAI 兼容</option>
+                </select>
+                <label style="margin-top: 10px;" data-i18n="apiUrl">API 地址</label>
+                <input type="url" id="llmUrl" placeholder="http://localhost:8082">
+                <div id="llmKeyRow">
+                    <label style="margin-top: 10px;" data-i18n="apiKey">API Key（掩码）</label>
+                    <input type="password" id="llmApiKey" placeholder="sk-..." autocomplete="off">
+                </div>
+                <div id="llmModelRow">
+                    <label style="margin-top: 10px;" data-i18n="model">模型</label>
+                    <select id="llmModel"></select>
+                </div>
+                <button id="llmRefreshBtn" class="btn btn-outline" style="width:100%;margin-top:8px;" onclick="loadLLMModels()" data-i18n="refreshModels">刷新模型列表</button>
+                <button class="btn btn-outline" style="width:100%;margin-top:8px;" onclick="saveLLMConfig()" data-i18n="saveLLM">保存 LLM 设置</button>
+            </div>
+
+            <div class="config-section">
+                <h3 data-i18n="webSearch">联网搜索</h3>
+                <div class="toggle-row">
+                    <span data-i18n="enableSearch">启用搜索</span>
+                    <label class="toggle">
+                        <input type="checkbox" id="searchEnabled" onchange="toggleSearchEnabled()">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="tool-box">
+                <h4 data-i18n="readToolbox">朗读工具箱</h4>
+                <input type="url" id="webUrl" placeholder="输入网页地址..." data-i18n-placeholder="webUrlPlaceholder">
+                <div class="btn-row">
+                    <button class="btn btn-outline" onclick="TTSModule.readWeb()" data-i18n="readWeb">朗读网页</button>
+                </div>
+                <textarea id="readText" rows="3" placeholder="输入要朗读的文本..." data-i18n-placeholder="readTextPlaceholder"></textarea>
+                <div class="btn-row" style="margin-top:8px;">
+                    <button class="btn btn-outline" onclick="TTSModule.readTextContent()" data-i18n="readText">朗读文本</button>
+                    <label class="btn btn-outline" style="cursor:pointer;">
+                        <span data-i18n="chooseFile">选择文件</span>
+                        <input type="file" id="fileInput" accept=".txt,.md" style="display:none;" onchange="TTSModule.uploadAndRead()">
+                    </label>
+                </div>
+                <div class="btn-row" style="margin-top:8px;">
+                    <button class="btn btn-outline" onclick="TTSModule.stop()" data-i18n="stopReading">停止朗读</button>
+                </div>
+                <div class="progress-bar" id="progressBar">
+                    <div class="fill" id="progressFill"></div>
+                </div>
+            </div>
+
+            <button class="btn btn-outline debug-toggle" onclick="DebugModule.toggle()" data-i18n="debugLogs">调试日志</button>
+        </div>
+    </div>
+
+    <audio id="audioPlayer" class="audio-player"></audio>
+
+    <div class="debug-panel" id="debugPanel">
+        <div class="debug-header">
+            <h4 data-i18n="llmDebugLogs">LLM 调试日志</h4>
+            <div>
+                <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;" onclick="DebugModule.refresh()" data-i18n="refresh">刷新</button>
+                <button class="btn btn-danger" style="padding:4px 12px;font-size:12px;" onclick="DebugModule.clear()" data-i18n="clearBtn">清空</button>
+                <button class="btn btn-outline" style="padding:4px 12px;font-size:12px;" onclick="DebugModule.toggle()" data-i18n="close">关闭</button>
+            </div>
+        </div>
+        <div id="debugLogs"></div>
+    </div>
+
+    <!-- 头像裁剪弹窗 -->
+    <div id="avatarModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:2000;align-items:center;justify-content:center;">
+        <div style="background:#fff;border-radius:12px;padding:20px;max-width:400px;width:90%;">
+            <h3 style="margin-bottom:12px;font-size:16px;" data-i18n="cropAvatar">裁剪头像</h3>
+            <div style="max-height:300px;overflow:hidden;">
+                <img id="avatarCropImage" style="max-width:100%;display:block;" />
+            </div>
+            <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
+                <button class="btn btn-outline" onclick="AvatarModule.closeCropper()" data-i18n="cancel">取消</button>
+                <button class="btn btn-primary" onclick="AvatarModule.cropAndUpload()" data-i18n="ok">确定</button>
+            </div>
+        </div>
+    </div>
+    <input type="file" id="avatarFileInput" accept="image/*" style="display:none;" onchange="AvatarModule.handleFileSelect(event)" />
+
+    <!-- 电话界面覆盖层 -->
+    <div id="phoneOverlay" class="phone-overlay" style="display:none;">
+        <div class="phone-header">
+            <div class="phone-avatar" id="phoneAvatar" style="display:none;"></div>
+            <div class="phone-name" id="phoneName">AI</div>
+            <div class="phone-timer" id="phoneTimer">00:00</div>
+        </div>
+
+        <div class="phone-messages" id="phoneMessages">
+            <!-- 实时对话内容 -->
+        </div>
+
+        <div id="phoneSpeakingIndicator" class="phone-speaking-indicator" style="display:none;">
+            <div class="waveform">
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+            </div>
+            <span data-i18n="listening">正在聆听...</span>
+        </div>
+
+        <div class="phone-controls">
+            <button id="phoneMicBtn" class="btn-call-round" onclick="PhoneModule.toggleMic()" title="静音" data-i18n-title="mute">
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="#007AFF" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 13.19 14.48 15 12 15s-4.52-1.81-4.91-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z"/>
+                    <line id="phoneMicSlash" x1="4" y1="4" x2="20" y2="20" stroke="#FF3B30" stroke-width="2.5" stroke-linecap="round" style="display:none"/>
+                </svg>
+            </button>
+            <button id="hangupBtn" class="btn-call-round" onclick="PhoneModule.stop()" title="挂断电话" data-i18n-title="hangup">
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="#FF3B30" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- 自定义音色弹窗 -->
+    <div id="customVoiceModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;
+        background:rgba(0,0,0,0.5);z-index:2000;align-items:center;justify-content:center;">
+        <div style="background:#fff;border-radius:12px;padding:20px;max-width:400px;width:90%;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                <h3 style="margin:0;font-size:16px;" data-i18n="addCustomVoice">添加自定义音色</h3>
+                <button class="btn btn-outline" style="padding:4px 8px;font-size:11px;" onclick="CustomVoiceModule.hideModal()">✕</button>
+            </div>
+            <div class="config-section">
+                <label data-i18n="cvName">音色名称</label>
+                <input type="text" id="cvName" placeholder="输入音色名称" style="width:100%;" data-i18n-placeholder="cvNamePlaceholder">
+            </div>
+            <div class="config-section">
+                <label data-i18n="cvAudio">参考音频</label>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <button type="button" class="btn btn-outline" style="flex-shrink:0;" onclick="document.getElementById('cvAudio').click()" data-i18n="chooseFile">选择文件</button>
+                    <span id="cvAudioFileName" style="font-size:12px;color:#999;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" data-i18n="noFileChosen">未选择文件</span>
+                </div>
+                <input type="file" id="cvAudio" accept=".wav,.mp3" style="display:none;" onchange="CustomVoiceModule.onFileSelected()">
+            </div>
+            <div class="config-section">
+                <label data-i18n="cvRefText">参考音频文字（可选，提高克隆质量）</label>
+                <input type="text" id="cvRefText" placeholder="输入参考音频的文字内容" style="width:100%;" data-i18n-placeholder="cvRefTextPlaceholder">
+            </div>
+            <button class="btn btn-primary" style="width:100%;" onclick="CustomVoiceModule.save()" data-i18n="save">保存</button>
+        </div>
+    </div>
+
+    <!-- 语音合成弹窗 -->
+    <div id="ttsStudioModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;
+        background:rgba(0,0,0,0.5);z-index:2000;align-items:center;justify-content:center;">
+        <div style="background:#fff;border-radius:12px;padding:24px;width:90%;max-height:90vh;overflow-y:auto;">
+            <!-- 标题栏 -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                <h2 style="margin:0;font-size:18px;" data-i18n="speechSynthesis">语音合成</h2>
+                <button class="btn btn-outline" style="padding:4px 12px;" onclick="TTSStudioModule.hide()">✕</button>
+            </div>
+            <!-- 引擎和音色选择 -->
+            <div style="display:flex;gap:12px;margin-bottom:16px;">
+                <div style="flex:1;">
+                    <label style="font-size:13px;color:#666;display:block;margin-bottom:4px;" data-i18n="ttsEngineLabel">TTS 引擎</label>
+                    <select id="studioEngine" style="width:100%;" onchange="TTSStudioModule.onEngineChange()">
+                        <option value="edge">edge-tts</option>
+                        <option value="moss">MOSS-TTS (0.1B)</option>
+                        <option value="qwen3">Qwen3-TTS</option>
+                        <option value="qwen3-clone" data-i18n="qwen3Clone">Qwen3-Clone (声音克隆)</option>
+                    </select>
+                </div>
+                <div style="flex:1;">
+                    <label style="font-size:13px;color:#666;display:block;margin-bottom:4px;" data-i18n="voice">音色</label>
+                    <select id="studioVoice" style="width:100%;"></select>
+                </div>
+            </div>
+            <!-- 文本输入 -->
+            <div style="margin-bottom:16px;">
+                <textarea id="studioText" placeholder="请输入要合成的文本内容..." data-i18n-placeholder="studioTextPlaceholder"
+                    style="width:100%;height:180px;padding:12px;border:1px solid #ddd;border-radius:8px;
+                    font-size:14px;resize:vertical;font-family:inherit;"></textarea>
+                <div style="text-align:right;font-size:12px;color:#999;margin-top:4px;">
+                    <span id="studioCharCount">0</span> <span data-i18n="charCountUnit">字</span>
+                </div>
+            </div>
+            <!-- 操作按钮 -->
+            <div style="display:flex;gap:8px;margin-bottom:16px;">
+                <button class="btn btn-primary" id="studioSynthesizeBtn" onclick="TTSStudioModule.synthesize()" data-i18n="synthesize">
+                    🎤 语音合成
+                </button>
+                <button class="btn btn-outline" onclick="TTSStudioModule.stop()" data-i18n="stopBtn">⏹ 停止</button>
+            </div>
+            <!-- 音频播放器 -->
+            <div id="studioPlayerSection" style="display:none;">
+                <div style="background:#f5f5f5;border-radius:8px;padding:16px;">
+                    <audio id="studioAudioPlayer" controls style="width:100%;"></audio>
+                    <div style="display:flex;gap:8px;margin-top:12px;">
+                        <button class="btn btn-outline" onclick="TTSStudioModule.download()" data-i18n="saveAudio">💾 保存音频</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 语音转文本弹窗 -->
+    <div id="sttStudioModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;
+        background:rgba(0,0,0,0.5);z-index:2000;align-items:center;justify-content:center;">
+        <div style="background:#fff;border-radius:12px;padding:24px;width:90%;max-height:90vh;overflow-y:auto;">
+            <!-- 标题栏 -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                <h2 style="margin:0;font-size:18px;" data-i18n="speechToText">语音转文本</h2>
+                <button class="btn btn-outline" style="padding:4px 12px;" onclick="STTStudioModule.hide()">✕</button>
+            </div>
+            <!-- 麦克风控制 -->
+            <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
+                <button id="sttMicBtn" class="btn btn-outline" style="width:64px;height:64px;border-radius:50%;font-size:26px;padding:0;flex-shrink:0;" onclick="STTStudioModule.toggleMic()" title="开关麦克风" data-i18n-title="sttMicTitle">🎤</button>
+                <div style="flex:1;">
+                    <div id="sttStatus" style="font-size:13px;color:#666;" data-i18n="sttStatusIdle">点击麦克风开始语音输入，说一句自动识别一句</div>
+                    <div id="sttWave" class="waveform stt-wave" style="display:none;margin-top:6px;justify-content:flex-start;">
+                        <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+                    </div>
+                </div>
+            </div>
+            <!-- 识别文本 -->
+            <div style="margin-bottom:16px;">
+                <textarea id="sttText" placeholder="识别的文字会显示在这里，也可以上传音频文件转成文字..." data-i18n-placeholder="sttTextPlaceholder"
+                    style="width:100%;height:180px;padding:12px;border:1px solid #ddd;border-radius:8px;
+                    font-size:14px;resize:vertical;font-family:inherit;"></textarea>
+                <div style="text-align:right;font-size:12px;color:#999;margin-top:4px;">
+                    <span id="sttCharCount">0</span> <span data-i18n="charCountUnit">字</span>
+                </div>
+            </div>
+            <!-- 操作按钮 -->
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="btn btn-outline" onclick="STTStudioModule.saveTxt()" data-i18n="saveTxt">💾 保存 txt</button>
+                <button class="btn btn-outline" onclick="STTStudioModule.copy()" data-i18n="copy">📋 复制</button>
+                <button class="btn btn-outline" onclick="STTStudioModule.clear()" data-i18n="clear">🗑 清空</button>
+                <label class="btn btn-outline" style="cursor:pointer;">
+                    <span data-i18n="uploadAudio">📁 上传音频</span>
+                    <input type="file" id="sttFileInput" accept=".wav,.mp3,.flac,.ogg,.m4a" style="display:none;" onchange="STTStudioModule.upload()">
+                </label>
+                <span style="font-size:13px;color:#999;align-self:center;" data-i18n="sttHint">
+                    ⏱ 耗时≈音频时长一半（1小时约30分钟），建议1小时以内，超长或未压缩WAV可能内存不足
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- JS 模块按依赖顺序加载 -->
+    <script src="/static/js/i18n.js"></script>
+    <script>I18N.init();</script>
+    <script src="/static/js/config.js"></script>
+    <script src="/static/js/avatar.js"></script>
+    <script src="/static/js/chat.js"></script>
+    <script src="/static/js/tts.js"></script>
+    <script src="/static/js/autochat.js"></script>
+    <script src="/static/js/character.js"></script>
+    <script src="/static/js/debug.js"></script>
+    <script src="/static/js/phone.js"></script>
+    <script src="/static/js/mic.js"></script>
+    <script src="/static/js/voice-chat.js"></script>
+    <script src="/static/js/conversation.js"></script>
+    <script src="/static/js/custom-voice.js"></script>
+    <script src="/static/js/tts-studio.js"></script>
+    <script src="/static/js/stt-studio.js"></script>
+    <script src="/static/js/read-aloud.js"></script>
+    <script src="/static/js/layout.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

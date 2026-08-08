@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# 上传文件
+uploads/
+
+# 隐私数据与本地配置（不入库，另提供 *.example.json 模板）
+config.json
+characters.json
+conversations.db
+conversations.json
+conversations.json.bak
+custom_voices/
+server.log
+voice_debug.log
+*.log
+
+# HTTPS 自签名证书（私钥不入库，可随时用 python generate_cert.py 重新生成）
+cert.pem
+key.pem
+
+# 音频与测试产物
+static/*.wav
+static/current_audio.*
+static/test_output.wav
+static/stream_diag*.wav
+test_mode*.wav
+/test_*.py
+test_*.wav
+*.wav
+
+# 本地启动脚本
+启动.bat
+启动-HTTPS.bat
+停止.bat
+stop_temp.bat
+
+# 本地对比文档
+*对比*.md
+
+# IDE
+.vscode/
+.idea/
+
+# 系统文件
+Thumbs.db
+.DS_Store

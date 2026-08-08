@@ -1,0 +1,43 @@
+{
+  "ai_role_prompt": "你是一个友好的 AI 助手，说话自然简洁。",
+  "user_role_prompt": "你是一位普通用户。",
+  "ai_voice": "晓晓",
+  "user_voice": "云扬",
+  "tts_read_user": true,
+  "tts_read_ai": true,
+  "llm_backend": "local",
+  "llm_url": "http://localhost:8082",
+  "web_search_enabled": true,
+  "ai_display_name": "AI",
+  "user_name": "你",
+  "tts_engine": "moss",
+  "qwen3_model_name": "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
+  "qwen3_clone_model_name": "",
+  "moss_model_dir": "",
+  "qwen3_device": "cuda",
+  "qwen3_language": "chinese",
+  "qwen3_max_new_tokens": 4000,
+  "qwen3_speaker": "Vivian",
+  "user_avatar": "",
+  "current_character_id": "default",
+  "engine_voices": {
+    "edge": "晓晓",
+    "moss": "Yuewen",
+    "qwen3": "Vivian",
+    "qwen3-clone": "声音克隆"
+  },
+  "llm_api_key": "",
+  "llm_model": "",
+  "llm_profiles": {
+    "openai": {
+      "url": "https://api.openai.com/v1",
+      "api_key": "",
+      "model": ""
+    },
+    "local": {
+      "url": "http://localhost:8082",
+      "api_key": "",
+      "model": ""
+    }
+  }
+}

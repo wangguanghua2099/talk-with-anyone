@@ -1,0 +1,17 @@
+fastapi==0.115.0
+uvicorn==0.30.0
+edge-tts==6.1.12
+requests==2.32.3
+beautifulsoup4==4.12.3
+python-multipart==0.0.9
+aiofiles==24.1.0
+# Qwen3 TTS 依赖
+# torch 需要单独安装 CUDA 版本: pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu124
+# torchaudio: pip install torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
+faster-qwen3-tts==0.3.0
+qwen-tts==0.1.1
+transformers>=4.57.3
+soundfile>=0.13.0
+# ASR 依赖
+funasr>=1.1.0
+onnxruntime>=1.16.0

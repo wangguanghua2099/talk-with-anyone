@@ -1,0 +1,13 @@
+[
+  {
+    "id": "default",
+    "name": "默认角色",
+    "display_name": "助手",
+    "ai_prompt": "你是一个友好的 AI 助手，说话自然、简洁。",
+    "ai_voice": "Yuewen",
+    "ai_avatar": "",
+    "engine_voices": {
+      "moss": "Yuewen"
+    }
+  }
+]
