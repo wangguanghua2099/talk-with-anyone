@@ -35,6 +35,25 @@ class AgentCore:
         else:
             system_prompt = f"{system_prompt}\n\n(Current date & time: {get_current_time('en')})"
 
+        # 注入用户设定（姓名/角色设定），否则模型不知道在和谁说话
+        user_name = (self.config.get("user_name") or "").strip()
+        user_role = (self.config.get("user_role_prompt") or "").strip()
+        if user_name or user_role:
+            if lang == "zh":
+                parts = []
+                if user_name:
+                    parts.append(f"用户叫{user_name}")
+                if user_role:
+                    parts.append(f"关于用户的设定：{user_role}")
+                system_prompt = f"{system_prompt}\n\n（{'；'.join(parts)}）"
+            else:
+                parts = []
+                if user_name:
+                    parts.append(f"User's name is {user_name}")
+                if user_role:
+                    parts.append(f"About the user: {user_role}")
+                system_prompt = f"{system_prompt}\n\n({' ; '.join(parts)})"
+
         # 天气类问题优先走天气接口（免key），拿不到再退回联网搜索
         weather_keywords_zh = ["天气", "气温", "温度", "预报", "降雨", "下雨", "下雪", "台风", "降温", "升温", "阴晴"]
         weather_keywords_en = ["weather", "forecast", "temperature", "rain", "snow", "sunny", "cloudy",
