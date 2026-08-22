@@ -1,4 +1,5 @@
 {
+  "access_token": "",
   "ai_role_prompt": "你是一个友好的 AI 助手，说话自然简洁。",
   "user_role_prompt": "你是一位普通用户。",
   "ai_voice": "晓晓",

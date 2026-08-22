@@ -10,6 +10,8 @@ async function initApp() {
     ReadAloudModule.init();
     await CharacterModule.load();
     updateTTSIcons();
+    const tokenInput = document.getElementById('accessTokenInput');
+    if (tokenInput) tokenInput.value = getAccessToken();
     await loadTTSEngine();
     await ConversationModule.loadList();
     await loadConversationMessages();
@@ -78,6 +80,11 @@ async function saveUserName() {
     if (!val) { alert(I18N.t('enterUserName')); return; }
     await ConfigModule.save({ user_name: val });
     alert(I18N.t('userNameSaved'));
+}
+
+function saveAccessToken() {
+    setAccessToken(document.getElementById('accessTokenInput').value.trim());
+    alert(I18N.t('accessTokenSaved'));
 }
 
 async function saveLLMConfig() {

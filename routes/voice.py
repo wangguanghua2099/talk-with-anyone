@@ -4,6 +4,7 @@ import asyncio
 import logging
 import numpy as np
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+import auth
 
 # 配置日志输出到文件
 logging.basicConfig(
@@ -131,6 +132,12 @@ async def voice_websocket(websocket: WebSocket):
     await websocket.accept()
     logger.info("[VOICE] WebSocket 连接已建立")
 
+    # 可选访问口令校验
+    expected = auth.get_expected_token()
+    if expected and not auth.token_matches(expected, websocket.query_params.get("token", "")):
+        await websocket.close(code=1008, reason="需要访问口令")
+        return
+
     try:
         asr = _get_asr()
         logger.info(f"[VOICE] ASR 引擎: {asr.current_engine_name}")
@@ -180,110 +187,130 @@ async def voice_websocket(websocket: WebSocket):
         logger.info(f"[VOICE] 会话就绪: {session_id}")
 
         while True:
-            data = await websocket.receive()
+            try:
+                data = await websocket.receive()
 
-            # 二进制音频数据
-            if data.get("type") == "websocket.receive" and data.get("bytes") is not None:
-                audio_bytes = data["bytes"]
-                audio_chunk = _decode_pcm16(audio_bytes)
+                # 二进制音频数据
+                if data.get("type") == "websocket.receive" and data.get("bytes") is not None:
+                    audio_bytes = data["bytes"]
+                    audio_chunk = _decode_pcm16(audio_bytes)
 
-                # VAD 检测
-                vad_result = vad.feed(audio_chunk)
+                    # VAD 检测
+                    vad_result = vad.feed(audio_chunk)
 
-                if vad_result["speech_start"]:
-                    await send_json({"type": "vad.speaking", "speaking": True})
+                    if vad_result["speech_start"]:
+                        await send_json({"type": "vad.speaking", "speaking": True})
 
-                if vad_result["speech_end"]:
-                    await send_json({"type": "vad.speaking", "speaking": False})
+                    if vad_result["speech_end"]:
+                        await send_json({"type": "vad.speaking", "speaking": False})
 
-                    # 获取完整音频
-                    full_audio = vad.get_audio()
-                    if full_audio.size == 0:
-                        continue
+                        # 获取完整音频
+                        full_audio = vad.get_audio()
+                        if full_audio.size == 0:
+                            continue
 
-                    # ASR 识别
-                    try:
-                        user_text = await asyncio.to_thread(asr.transcribe, full_audio)
-                    except Exception as e:
-                        logger.error(f"[VOICE] ASR 识别失败: {e}")
-                        await send_json({
-                            "type": "asr.error",
-                            "message": f"ASR 识别失败: {str(e)}",
-                        })
-                        continue
-
-                    if not user_text.strip():
-                        continue
-
-                    await send_json({
-                        "type": "asr.result",
-                        "text": user_text,
-                        "is_final": True,
-                    })
-
-                    if mode == "transcribe":
-                        # 仅识别模式，不调用 LLM
-                        continue
-
-                    # 调用 LLM
-                    interrupt_event.clear()
-
-                    async def run_chat():
+                        # ASR 识别
                         try:
-                            reply = await agent.chat(user_text, config=config)
-                            await send_json({
-                                "type": "assistant.completed",
-                                "text": reply,
-                            })
-                            return reply
+                            user_text = await asyncio.to_thread(asr.transcribe, full_audio)
                         except Exception as e:
-                            logger.error(f"[VOICE] LLM 调用失败: {e}")
+                            logger.error(f"[VOICE] ASR 识别失败: {e}")
                             await send_json({
-                                "type": "assistant.error",
-                                "message": str(e),
+                                "type": "asr.error",
+                                "message": f"ASR 识别失败: {str(e)}",
                             })
-                            return None
+                            continue
 
-                    active_task = asyncio.create_task(run_chat())
+                        if not user_text.strip():
+                            continue
 
-            # JSON 控制消息
-            elif data.get("type") == "websocket.receive" and data.get("text") is not None:
-                message = json.loads(data["text"])
-                msg_type = message.get("type", "")
+                        await send_json({
+                            "type": "asr.result",
+                            "text": user_text,
+                            "is_final": True,
+                        })
 
-                if msg_type == "session.start":
-                    mode = message.get("mode", "chat")
-                    await send_json({
-                        "type": "session.ready",
-                        "session_id": session_id,
-                        "mode": mode,
-                    })
-                    logger.info(f"[VOICE] 会话开始: mode={mode}")
+                        if mode == "transcribe":
+                            # 仅识别模式，不调用 LLM
+                            continue
 
-                elif msg_type == "interrupt":
-                    interrupt_event.set()
-                    if active_task and not active_task.done():
-                        active_task.cancel()
-                    tts.stop()
-                    await send_json({
-                        "type": "interrupt.ack",
-                        "reason": "user_interrupt",
-                    })
+                        # 调用 LLM
+                        interrupt_event.clear()
 
-                elif msg_type == "session.stop":
-                    interrupt_event.set()
-                    if active_task and not active_task.done():
-                        active_task.cancel()
-                    tts.stop()
-                    await send_json({"type": "session.closed"})
+                        # 新一轮发言开始：取消上一轮尚未完成的回复任务，
+                        # 防止被打断的旧回复晚到、与新回复叠加
+                        # （CancelledError 不会被 run_chat 的 except Exception 捕获）
+                        if active_task is not None and not active_task.done():
+                            active_task.cancel()
+
+                        async def run_chat():
+                            try:
+                                reply = await agent.chat(user_text, config=config)
+                                await send_json({
+                                    "type": "assistant.completed",
+                                    "text": reply,
+                                })
+                                return reply
+                            except Exception as e:
+                                logger.error(f"[VOICE] LLM 调用失败: {e}")
+                                await send_json({
+                                    "type": "assistant.error",
+                                    "message": str(e),
+                                })
+                                return None
+
+                        active_task = asyncio.create_task(run_chat())
+
+                # JSON 控制消息
+                elif data.get("type") == "websocket.receive" and data.get("text") is not None:
+                    message = json.loads(data["text"])
+                    msg_type = message.get("type", "")
+
+                    if msg_type == "session.start":
+                        mode = message.get("mode", "chat")
+                        await send_json({
+                            "type": "session.ready",
+                            "session_id": session_id,
+                            "mode": mode,
+                        })
+                        logger.info(f"[VOICE] 会话开始: mode={mode}")
+
+                    elif msg_type == "interrupt":
+                        interrupt_event.set()
+                        if active_task and not active_task.done():
+                            active_task.cancel()
+                        try:
+                            tts.stop()
+                        except Exception as e:
+                            logger.error(f"[VOICE] 停止 TTS 失败: {e}")
+                        await send_json({
+                            "type": "interrupt.ack",
+                            "reason": "user_interrupt",
+                        })
+
+                    elif msg_type == "session.stop":
+                        interrupt_event.set()
+                        if active_task and not active_task.done():
+                            active_task.cancel()
+                        try:
+                            tts.stop()
+                        except Exception as e:
+                            logger.error(f"[VOICE] 停止 TTS 失败: {e}")
+                        await send_json({"type": "session.closed"})
+                        client_disconnected = True
+                        break
+
+                # 连接关闭
+                elif data.get("type") == "websocket.disconnect":
+                    logger.info("[VOICE] 客户端断开连接")
                     client_disconnected = True
                     break
-
-            # 连接关闭
-            elif data.get("type") == "websocket.disconnect":
-                logger.info("[VOICE] 客户端断开连接")
+            except WebSocketDisconnect:
+                logger.info("[VOICE] WebSocket 断开")
                 client_disconnected = True
                 break
+            except Exception as e:
+                # 单条消息处理失败不中断通话连接
+                logger.error(f"[VOICE] 消息处理错误(继续保持连接): {e}")
 
     except WebSocketDisconnect:
         logger.info("[VOICE] WebSocket 断开")

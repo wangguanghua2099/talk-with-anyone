@@ -15,11 +15,42 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.cors import CORSMiddleware
 from state import BASE_DIR
 from routes import all_routers
 from errors import AppError
+import auth
 
 app = FastAPI(title="Talk With Anyone", version="0.1.0")
+
+# 开发用 CORS：允许浏览器端（Flutter Web）跨域访问 / API 与 WebSocket
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.middleware("http")
+async def access_token_guard(request: Request, call_next):
+    """可选的访问口令：非空时 /api/*（除 /api/info 外）需 Bearer Token。"""
+    path = request.url.path
+    if path.startswith("/api/") and path != "/api/info":
+        # /api/tts/stream 用查询参数 token（MediaPlayer 无法自定义请求头），内部自行校验
+        if path == "/api/tts/stream":
+            return await call_next(request)
+        expected = auth.get_expected_token()
+        if expected:
+            provided = auth.extract_bearer(request.headers.get("authorization", ""))
+            if not auth.token_matches(expected, provided):
+                return JSONResponse(status_code=401, content={
+                    "error_code": "UNAUTHORIZED",
+                    "message": "需要访问口令",
+                    "error": "需要访问口令",
+                })
+    return await call_next(request)
 
 
 @app.exception_handler(AppError)

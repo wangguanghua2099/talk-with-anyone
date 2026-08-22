@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from models import ConfigUpdate
 from state import load_config, save_config, agent, auto_chat
 from errors import AppError
+import auth
 
 router = APIRouter()
 
@@ -10,6 +11,16 @@ router = APIRouter()
 async def get_config():
     config = load_config()
     return config
+
+
+@router.get("/api/info")
+async def get_info():
+    """App 探测用：返回项目信息与是否启用访问口令（该接口豁免口令校验）。"""
+    return {
+        "name": "Talk With Anyone",
+        "version": "0.1.0",
+        "auth_required": bool(auth.get_expected_token()),
+    }
 
 
 @router.post("/api/config")

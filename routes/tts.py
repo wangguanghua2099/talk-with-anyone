@@ -1,13 +1,73 @@
 ﻿import os
 import base64
+import struct
 import numpy as np
-from fastapi import APIRouter, UploadFile, File, Form, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, UploadFile, File, Form, WebSocket, WebSocketDisconnect, Request
+from fastapi.responses import StreamingResponse
 from models import TTSRequest
 from state import tts_manager, load_config, save_config, BASE_DIR, UPLOAD_DIR
 from agent.tools import fetch_web_content, read_file
 from errors import AppError
+import auth
 
 router = APIRouter()
+
+
+def _wav_header(sample_rate: int) -> bytes:
+    """PCM16 单声道 WAV 头；data size 用 0xFFFFFFFF 表示未知流长度"""
+    byte_rate = sample_rate * 2
+    return struct.pack(
+        '<4sI4s4sIHHIIHH4sI',
+        b'RIFF', 0xFFFFFFFF, b'WAVE',
+        b'fmt ', 16, 1, 1, sample_rate, byte_rate, 2, 16,
+        b'data', 0xFFFFFFFF,
+    )
+
+
+@router.get("/api/tts/stream")
+async def tts_stream(request: Request, text: str = "", voice: str = ""):
+    """HTTP 流式 TTS：边生成边发送 WAV PCM 数据，供客户端渐进式播放。
+
+    鉴权用查询参数 token（MediaPlayer 无法自定义请求头），因此本端点不走
+    全局 Bearer 校验，而是自行校验。
+    """
+    expected = auth.get_expected_token()
+    if expected and not auth.token_matches(expected, request.query_params.get("token", "")):
+        raise AppError("UNAUTHORIZED", "需要访问口令", 401)
+
+    if not text:
+        raise AppError("TTS_EMPTY_CONTENT", "没有可朗读的内容", 400)
+
+    engine = tts_manager.get_current_engine()
+
+    if not hasattr(engine, 'speak_streaming'):
+        audio_path = await engine.speak(text, voice or load_config().get("ai_voice", "晓晓"))
+        if not audio_path or not os.path.exists(os.path.join(BASE_DIR, audio_path.lstrip("/"))):
+            raise AppError("TTS_EMPTY_CONTENT", "合成失败", 500)
+        return StreamingResponse(
+            open(os.path.join(BASE_DIR, audio_path.lstrip("/")), "rb"),
+            media_type="audio/wav",
+        )
+
+    sample_rate = getattr(engine, 'sample_rate', 24000)
+
+    async def gen():
+        try:
+            yield _wav_header(sample_rate)
+            async for audio_chunk in engine.speak_streaming(text, voice or load_config().get("ai_voice", "晓晓")):
+                # 客户端已断开（App 打断/退出）就停止合成，避免浪费 GPU
+                if await request.is_disconnected():
+                    print("[TTS] HTTP 流式：客户端已断开，停止合成")
+                    break
+                audio_int16 = np.clip(audio_chunk * 32768, -32768, 32767).astype(np.int16)
+                yield audio_int16.tobytes()
+        finally:
+            engine.stop()
+
+    return StreamingResponse(gen(), media_type="audio/wav", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+    })
 
 
 @router.websocket("/ws/tts-stream")
@@ -15,6 +75,12 @@ async def tts_stream_websocket(websocket: WebSocket):
     """WebSocket 流式 TTS - 边生成边播放"""
     await websocket.accept()
     print("[TTS] WebSocket 流式连接已建立")
+
+    # 可选访问口令校验
+    expected = auth.get_expected_token()
+    if expected and not auth.token_matches(expected, websocket.query_params.get("token", "")):
+        await websocket.close(code=1008, reason="需要访问口令")
+        return
 
     try:
         while True:
@@ -38,16 +104,22 @@ async def tts_stream_websocket(websocket: WebSocket):
             sample_rate = getattr(engine, 'sample_rate', 24000)
             await websocket.send_json({"type": "audio.start", "sample_rate": sample_rate})
 
-            async for audio_chunk in engine.speak_streaming(text, voice):
-                audio_int16 = np.clip(audio_chunk * 32768, -32768, 32767).astype(np.int16)
-                chunk_b64 = base64.b64encode(audio_int16.tobytes()).decode("ascii")
-                await websocket.send_json({
-                    "type": "audio.chunk",
-                    "data": chunk_b64,
-                    "samples": len(audio_chunk),
-                })
+            try:
+                async for audio_chunk in engine.speak_streaming(text, voice):
+                    audio_int16 = np.clip(audio_chunk * 32768, -32768, 32767).astype(np.int16)
+                    chunk_b64 = base64.b64encode(audio_int16.tobytes()).decode("ascii")
+                    await websocket.send_json({
+                        "type": "audio.chunk",
+                        "data": chunk_b64,
+                        "samples": len(audio_chunk),
+                    })
 
-            await websocket.send_json({"type": "audio.done"})
+                await websocket.send_json({"type": "audio.done"})
+            except Exception:
+                # 客户端断开或发送失败：立即停止引擎合成，避免浪费 GPU
+                engine.stop()
+                print("[TTS] 流式中断，已停止合成")
+                raise
 
     except WebSocketDisconnect:
         print("[TTS] WebSocket 断开")
