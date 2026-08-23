@@ -70,6 +70,19 @@
             <div class="sidebar-tab" onclick="STTStudioModule.show()">
                 <h3 data-i18n="speechToText">语音转文本</h3>
             </div>
+
+            <div class="sidebar-tab" onclick="toggleTab('accessTokenTab')">
+                <h3 data-i18n="accessToken">访问口令（可选） ▾</h3>
+            </div>
+            <div class="tab-content" id="accessTokenTab">
+                <div class="config-section">
+                    <div style="display:flex;gap:8px;">
+                        <input type="password" id="accessTokenInput" placeholder="" data-i18n-placeholder="accessTokenPlaceholder" style="flex:1;" value="">
+                        <button class="btn btn-outline" onclick="saveAccessToken()" data-i18n="save">保存</button>
+                    </div>
+                    <div style="font-size:11px;color:#999;margin-top:4px;" data-i18n="accessTokenHint">需与服务器 config.json 的 access_token 一致；留空则不启用</div>
+                </div>
+            </div>
         </div>
 
         <div class="chat-area">
@@ -109,15 +122,6 @@
         </div>
 
         <div class="sidebar">
-            <div class="config-section">
-                <h3 data-i18n="accessToken">访问口令（可选）</h3>
-                <div style="display:flex;gap:8px;">
-                    <input type="password" id="accessTokenInput" placeholder="" data-i18n-placeholder="accessTokenPlaceholder" style="flex:1;" value="">
-                    <button class="btn btn-outline" onclick="saveAccessToken()" data-i18n="save">保存</button>
-                </div>
-                <div style="font-size:11px;color:#999;margin-top:4px;" data-i18n="accessTokenHint">需与服务器 config.json 的 access_token 一致；留空则不启用</div>
-            </div>
-
             <div class="config-section">
                 <h3 data-i18n="charSelect">角色选择</h3>
                 <select id="characterSelect" onchange="CharacterModule.select()" oncontextmenu="CharacterModule.showContextMenu(event)" style="width:100%;margin-bottom:8px;"></select>

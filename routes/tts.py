@@ -281,14 +281,16 @@ async def download_audio(filename: str = "current_audio.wav", save_name: str = "
     if not os.path.exists(file_path):
         raise AppError("FILE_NOT_FOUND", "文件不存在", 404)
 
-    # 使用用户指定的文件名，或使用原始文件名
-    download_name = save_name if save_name else filename
-    if not download_name.endswith('.wav'):
-        download_name += '.wav'
+    # 使用用户指定的文件名，或使用原始文件名（按真实扩展名给对 MIME，
+    # edge 输出 MP3 却标成 audio/wav 时部分播放器会解码失败）
+    is_mp3 = file_path.lower().endswith(".mp3")
+    download_name = save_name if save_name else os.path.basename(filename)
+    if not (download_name.lower().endswith(".wav") or download_name.lower().endswith(".mp3")):
+        download_name += ".wav"
 
     return FileResponse(
         file_path,
-        media_type="audio/wav",
+        media_type="audio/mpeg" if is_mp3 else "audio/wav",
         filename=download_name
     )
 

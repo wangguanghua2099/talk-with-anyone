@@ -61,9 +61,16 @@ class TTSManager:
         if engine_name in self.engines:
             old = self.get_current_engine()
             if old is not None:
-                old.unload()
+                # 卸载失败（如缺依赖）不能卡住切换，否则引擎永远切不过去
+                try:
+                    old.unload()
+                except Exception as e:
+                    print(f"[TTS] 卸载旧引擎 {type(old).__name__} 失败(忽略): {e}")
             self.config["tts_engine"] = engine_name
-            self.preload_current_engine()
+            try:
+                self.preload_current_engine()
+            except Exception as e:
+                print(f"[TTS] 预加载新引擎 {engine_name} 失败(忽略): {e}")
             return True
         return False
 
