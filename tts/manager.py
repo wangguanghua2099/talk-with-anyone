@@ -2,6 +2,7 @@ from .edge_engine import EdgeTTSEngine
 from .moss_engine import MossTTSEngine
 from .qwen3_engine import Qwen3TTSEngine
 from .qwen3_clone_engine import Qwen3CloneTTSEngine
+from .text_clean import clean_for_tts
 from .voices import VoiceManager
 from .custom_voice_manager import CustomVoiceManager
 
@@ -44,7 +45,7 @@ class TTSManager:
 
     async def speak(self, text, voice=None):
         engine = self.get_current_engine()
-        return await engine.speak(text, voice)
+        return await engine.speak(clean_for_tts(text or ""), voice)
 
     def get_voices(self):
         engine = self.get_current_engine()

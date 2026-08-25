@@ -8,6 +8,7 @@ async function initApp() {
     AvatarModule.init();
     TTSModule.init();
     ReadAloudModule.init();
+    await RAGModule.init();
     await CharacterModule.load();
     updateTTSIcons();
     const tokenInput = document.getElementById('accessTokenInput');

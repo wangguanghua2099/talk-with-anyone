@@ -21,6 +21,7 @@
 - 🎭 **角色系统**：自定义 AI 角色（人设 prompt、头像、名字、专属声音），一键切换，体验talk with anyone
 - 💬 **会话管理**：多会话、全文搜索、重命名、清空、删除，SQLite 本地持久化
 - 🔍 **联网工具**：网页搜索、当前时间、天气查询、新闻事件查询
+- 📚 **RAG 知识库**：上传 txt 一键构建本地知识库，聊天时自动检索相关片段注入上下文，让 AI「读过书」再回答；支持多库管理、增量追加、检索测试与构建进度实时显示；embedding 由 llama.cpp 本地服务计算，数据全程不出本机
 - 🌐 **双语界面**：中文 / English 一键切换（含浏览器语言自动检测）
 - 📱 **移动端适配**：左右侧边栏可一键收起/展开，窄屏（手机/平板）自动收起，界面自动换行、随内容增高的输入框；手机/平板浏览器访问服务器即可使用全部功能
 - 📞 **电话模式**：沉浸式语音通话界面，点击即开启全双工实时对话；手机/平板浏览器访问服务器即可使用（需 HTTPS）
@@ -35,6 +36,7 @@
 | 前端 | 原生 HTML / CSS / JavaScript，无构建步骤 |
 | TTS | edge-tts · onnxruntime（MOSS-TTS-Nano）· faster-qwen3-tts（Qwen3） |
 | ASR | funasr + SenseVoice Small |
+| RAG | 自研分块 / 向量库（numpy 精确检索）· llama.cpp embedding 服务（OpenAI 兼容） |
 
 ## 🚀 快速开始
 
@@ -128,6 +130,9 @@ python main.py               # 检测到 cert.pem/key.pem 后自动以 HTTPS 启
 | `current_character_id` | 默认角色 ID |
 | `user_avatar` | 用户头像（base64，留空则使用默认） |
 | `web_search_enabled` | 是否启用联网搜索 |
+| `rag_enabled` / `rag_active_kb` | 是否启用知识库 / 当前激活的知识库 ID |
+| `rag_top_k` / `rag_chunk_size` / `rag_chunk_overlap` | 每次检索注入的片段数、分块大小与相邻重叠 |
+| `rag_embed_url` / `rag_embed_model` / `rag_embed_dim` | embedding 服务地址、模型名、向量截断维度（0=不截断） |
 | `asr_engine` / `asr_device` | ASR 引擎与设备（默认 `sensevoice` / `cuda`） |
 
 ## 📥 语音模型下载指引（可选，默认均为本地路径）
@@ -160,6 +165,16 @@ python main.py               # 检测到 cert.pem/key.pem 后自动以 HTTPS 启
 
 由 `funasr` 自动下载（ModelScope 源），首次识别时自动拉取，无需手动配置。
 
+### Embedding 模型（RAG 知识库用，可选）
+
+知识库的向量化由 llama.cpp 的 `llama-server` 提供（OpenAI 兼容 `/v1/embeddings`）。下载任意 embedding GGUF 模型后启动：
+
+```bash
+llama-server -m <embedding模型>.gguf --embedding --pooling last --host 127.0.0.1 --port 8089
+```
+
+启动后无需改配置即可自动探测；网页端「知识库」面板会显示嵌入服务连接状态与实际加载的模型名。
+
 ## 📁 目录结构
 
 ```
@@ -167,6 +182,8 @@ talk-with-anyone/
 ├── agent/            # 对话核心：LLM 调用、会话上下文管理
 ├── asr/              # 语音识别（SenseVoice）
 ├── auto_chat/        # 自动聊天引擎
+├── rag/              # RAG 知识库（分块 / embedding / 向量检索）
+├── rag_data/         # 知识库数据（每个库一个文件夹，自动扫描加载）
 ├── routes/           # FastAPI 路由（chat / tts / stt / voice / conversations / characters / tools ...）
 ├── static/           # 前端页面与资源（原生 JS，无需构建）
 ├── tts/              # 语音合成（edge / moss / qwen3 / qwen3-clone / 自定义音色管理）
@@ -212,6 +229,9 @@ talk-with-anyone/
 
 **Q：朗读工具箱的朗读音色是什么？**
 朗读工具箱合成语音时使用的是**角色当前音色**，而非用户音色。
+
+**Q：RAG 知识库如何使用？**
+三步：① 启动 embedding 服务（见「模型下载指引」中的 Embedding 模型一节）；② 右侧边栏打开「知识库」面板，上传 txt 创建知识库并等待构建完成；③ 选中「设为聊天用」并点亮顶栏「知识库」开关（蓝色），此后对话时 AI 会自动检索库内内容辅助回答。换 embedding 模型或修改截断维度后需重建知识库（坐标系会变化）。
 
 **Q：如何发挥音色的最佳效果？**
 每种音色通常都有与之契合的文字风格。要发挥最佳效果，需要让文字风格与音色相匹配——无论是模型回复的文字内容，还是待合成语音的文字，都应尽量贴合所选音色的风格。

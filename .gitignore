@@ -14,10 +14,14 @@ env/
 # 上传文件
 uploads/
 
+# RAG 知识库数据（用户私有文档、分块与向量，不入库；服务端会自动扫描重建）
+rag_data/
+
 # 隐私数据与本地配置（不入库，另提供 *.example.json 模板）
 config.json
 characters.json
 conversations.db
+conversations.db-journal
 conversations.json
 conversations.json.bak
 custom_voices/

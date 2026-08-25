@@ -21,6 +21,7 @@ class ConfigUpdate(BaseModel):
     llm_model: Optional[str] = None
     llm_profiles: Optional[dict] = None
     web_search_enabled: Optional[bool] = None
+    rag_enabled: Optional[bool] = None
 
 
 class TTSRequest(BaseModel):

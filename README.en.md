@@ -21,6 +21,7 @@ A **local-first voice chat agent**: the entire pipeline runs locally with low ha
 - 🎭 **Character system**: custom AI characters (system prompt, avatar, name, dedicated voice), one-click switch
 - 💬 **Conversation management**: multi-session, full-text search, rename, clear, delete — persisted in SQLite
 - 🔍 **Web tools**: web search, current time, weather & news lookups, page fetch, file read/write
+- 📚 **RAG knowledge base**: upload txt files to build a local knowledge base — relevant passages are retrieved and injected into the chat context automatically, so the AI answers as if it had read the book; multi-library management, incremental append, retrieval testing and live build progress; embeddings are computed by a local llama.cpp service, so data never leaves your machine
 - 🌐 **Bilingual UI**: Chinese / English one-click toggle (auto-detects browser language)
 - 📱 **Mobile-friendly**: left/right sidebars can be collapsed/expanded with one click and auto-collapse on narrow screens (phones/tablets); the input box wraps and grows with its content; use every feature from a phone/tablet browser
 - 📞 **Phone mode**: an immersive voice-call UI with full-duplex real-time conversation; use it from a phone/tablet browser that can reach the server (HTTPS required)
@@ -35,6 +36,7 @@ A **local-first voice chat agent**: the entire pipeline runs locally with low ha
 | Frontend | Vanilla HTML / CSS / JavaScript, no build step |
 | TTS | edge-tts · onnxruntime (MOSS-TTS-Nano) · faster-qwen3-tts (Qwen3) |
 | ASR | funasr + SenseVoice Small |
+| RAG | In-house chunking / vector store (exact numpy search) · llama.cpp embedding server (OpenAI-compatible) |
 
 ## 🚀 Quick Start
 
@@ -128,6 +130,9 @@ python main.py               # starts with HTTPS automatically when cert.pem/key
 | `current_character_id` | Default character id |
 | `user_avatar` | User avatar (base64, empty = default) |
 | `web_search_enabled` | Enable web search |
+| `rag_enabled` / `rag_active_kb` | Enable the knowledge base / active library id |
+| `rag_top_k` / `rag_chunk_size` / `rag_chunk_overlap` | Retrieved passages per query, chunk size & overlap |
+| `rag_embed_url` / `rag_embed_model` / `rag_embed_dim` | Embedding service URL, model id, vector truncation dim (0 = off) |
 | `asr_engine` / `asr_device` | ASR engine & device (default `sensevoice` / `cuda`) |
 
 ## 📥 Model Download Guide (optional, local engines only)
@@ -159,6 +164,16 @@ All engines except Edge-TTS need a local model. Models are downloaded primarily 
 
 Downloaded automatically by `funasr` (ModelScope source) on first use — no manual setup.
 
+### Embedding model (optional, for the RAG knowledge base)
+
+Knowledge-base embeddings are served by llama.cpp's `llama-server` (OpenAI-compatible `/v1/embeddings`). Download any embedding GGUF model and start it with:
+
+```bash
+llama-server -m <embedding-model>.gguf --embedding --pooling last --host 127.0.0.1 --port 8089
+```
+
+No extra config needed — the server is auto-detected; the web **Knowledge Base** panel shows the embedding service status and the actually loaded model name.
+
 ## 📁 Project Layout
 
 ```
@@ -166,6 +181,8 @@ talk-with-anyone/
 ├── agent/            # Chat core: LLM calls, conversation context
 ├── asr/              # Speech recognition (SenseVoice)
 ├── auto_chat/        # Auto-chat engine
+├── rag/              # RAG knowledge base (chunking / embedding / vector search)
+├── rag_data/         # Knowledge-base data (one folder per library, auto-scanned)
 ├── routes/           # FastAPI routers (chat / tts / stt / voice / conversations / characters / tools ...)
 ├── static/           # Frontend pages & assets (vanilla JS, no build)
 ├── tts/              # Speech synthesis (edge / moss / qwen3 / qwen3-clone / custom voice mgmt)
@@ -211,6 +228,9 @@ Hover over the character name in the **character selector** dropdown, right-clic
 
 **Q: Which voice does the Reading Toolbox use?**
 The Reading Toolbox synthesizes with the **character's current voice**, not the user's voice.
+
+**Q: How do I use the RAG knowledge base?**
+Three steps: ① start the embedding service (see "Embedding model" in the model download guide); ② open the **Knowledge Base** panel in the right sidebar, upload txt files to create a library and wait for the build to finish; ③ set it as active and turn on the top-bar **Knowledge Base** switch (blue) — from then on the AI retrieves library content automatically when chatting. Rebuild your libraries after switching embedding models or changing the truncation dim (the vector space changes).
 
 **Q: How do I get the best out of a voice?**
 Each voice usually suits a particular writing style. To get the best result, match the text style to the voice — both the model's replies and the text you synthesize should fit the style of the chosen voice.

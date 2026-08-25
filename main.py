@@ -124,6 +124,10 @@ if __name__ == "__main__":
     key_file = os.path.join(BASE_DIR, "key.pem")
     if os.path.exists(cert_file) and os.path.exists(key_file):
         print("[MAIN] 检测到 HTTPS 证书，以 https://<本机IP>:7862 启动")
-        uvicorn.run(app, host="0.0.0.0", port=7862, ssl_certfile=cert_file, ssl_keyfile=key_file)
+        # timeout_keep_alive 调大：uvicorn 默认 5s 就关闭空闲连接，
+        # 而 App 端(Dart HttpClient)默认会复用 15s 内的空闲连接，
+        # 复用到已被关闭的连接会报"Connection closed before full header"
+        uvicorn.run(app, host="0.0.0.0", port=7862, ssl_certfile=cert_file, ssl_keyfile=key_file,
+                    timeout_keep_alive=120)
     else:
-        uvicorn.run(app, host="0.0.0.0", port=7862)
+        uvicorn.run(app, host="0.0.0.0", port=7862, timeout_keep_alive=120)

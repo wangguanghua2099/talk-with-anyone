@@ -103,6 +103,40 @@ class AgentCore:
                         if snippet:
                             lines.append(f"   摘要：{snippet}" if lang == "zh" else f"   Snippet: {snippet}")
                     system_prompt = f"{system_prompt}\n\n" + "\n".join(lines)
+
+        # 本地知识库（RAG）检索注入：开关开启且已激活知识库时生效。
+        # 嵌入服务未运行 / 未建库 / 模型不匹配等情况一律静默跳过，绝不阻塞聊天。
+        self.last_rag_sources = []
+        if self.config.get("rag_enabled"):
+            try:
+                from rag.service import get_rag_service
+                svc = get_rag_service()
+                active_kb = (self.config.get("rag_active_kb") or "").strip()
+                top_k = int(self.config.get("rag_top_k") or 4)
+                hits = await svc.search(user_message, top_k=top_k,
+                                        active_kb=active_kb, config=self.config)
+            except Exception as e:
+                print(f"[RAG] 检索跳过: {e}")
+                hits = []
+            if hits:
+                self.last_rag_sources = hits
+                kb_name = hits[0].get("kb_name", "")
+                if lang == "zh":
+                    header = (f"（以下是本地知识库《{kb_name}》中与用户问题最相关的原文片段。"
+                              f"回答时必须优先依据这些片段；片段未涵盖的内容请明确说明"
+                              f"“资料中没有提到”，不要凭空编造）：")
+                else:
+                    header = ("(The following are the most relevant excerpts from local "
+                              f"knowledge base '{kb_name}'. Base your answer on them first; "
+                              "explicitly say so when they don't cover something, "
+                              "do not fabricate):")
+                lines = [header]
+                for h in hits:
+                    chapter = (h.get("meta") or {}).get("chapter")
+                    tag = f"（{chapter}）" if chapter and lang == "zh" else (
+                        f" ({chapter})" if chapter else "")
+                    lines.append(f"[{h['rank']}]{tag} {h['text']}")
+                system_prompt = f"{system_prompt}\n\n" + "\n\n".join(lines)
         messages = [{"role": "system", "content": system_prompt}]
         for msg in self.history[-20:]:
             messages.append({"role": "user", "content": msg["content"]} if msg["role"] == "user" else {"role": "assistant", "content": msg["content"]})

@@ -7,6 +7,7 @@ from .tools import router as tools_router
 from .debug import router as debug_router
 from .voice import router as voice_router
 from .stt import router as stt_router
+from .rag import router as rag_router
 
 all_routers = [
     config_router,
@@ -18,4 +19,5 @@ all_routers = [
     debug_router,
     voice_router,
     stt_router,
+    rag_router,
 ]

@@ -8,6 +8,7 @@ from models import TTSRequest
 from state import tts_manager, load_config, save_config, BASE_DIR, UPLOAD_DIR
 from agent.tools import fetch_web_content, read_file
 from errors import AppError
+from tts.text_clean import clean_for_tts
 import auth
 
 router = APIRouter()
@@ -38,6 +39,7 @@ async def tts_stream(request: Request, text: str = "", voice: str = ""):
     if not text:
         raise AppError("TTS_EMPTY_CONTENT", "没有可朗读的内容", 400)
 
+    text = clean_for_tts(text)  # 去除 Markdown 符号，保证朗读连贯
     engine = tts_manager.get_current_engine()
 
     if not hasattr(engine, 'speak_streaming'):
@@ -92,6 +94,7 @@ async def tts_stream_websocket(websocket: WebSocket):
                 await websocket.send_json({"type": "error", "message": "文本为空"})
                 continue
 
+            text = clean_for_tts(text)  # 去除 Markdown 符号
             # 获取当前引擎
             engine = tts_manager.get_current_engine()
 

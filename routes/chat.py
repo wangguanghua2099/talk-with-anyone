@@ -11,7 +11,9 @@ async def chat(req: ChatRequest):
     config = agent.config
     display_name = config.get("ai_display_name", "AI")
     reply = await agent.chat(req.message, config=config)
-    return {"reply": reply, "display_name": display_name, "history": agent.history}
+    return {"reply": reply, "display_name": display_name, "history": agent.history,
+            # 本轮 RAG 命中的知识库片段（开关关闭或未命中时为空数组）
+            "sources": getattr(agent, "last_rag_sources", []) or []}
 
 
 @router.post("/api/auto-chat/start")
