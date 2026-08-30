@@ -1,6 +1,8 @@
 # Talk With Anyone · 跟谁都能聊，万物皆可语
 
-本地优先的语音聊天智能体：可实现全流程本地运行，硬件配置要求低，8G 显存即可流畅运行。支持移动端适配——电脑启动项目后，手机/平板浏览器即可访问，使用更便利。项目适配APP仓库地址 https://github.com/wangguanghua2099/talk-with-anyone-app
+本地优先的语音聊天智能体：可实现全流程本地运行，硬件配置要求低，8G 显存即可流畅运行。支持移动端适配——电脑启动项目后，手机/平板浏览器即可访问，使用更便利。
+项目适配手机APP仓库地址 https://github.com/wangguanghua2099/talk-with-anyone-app
+适配ESP32芯片音箱前端仓库地址 https://github.com/wangguanghua2099/talk-with-anyone-esp32
 
 [English](./README.en.md) | **简体中文**
 

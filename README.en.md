@@ -1,6 +1,8 @@
 # Talk With Anyone
 
-A **local-first voice chat agent**: the entire pipeline runs locally with low hardware requirements — smooth on 8 GB VRAM. You speak → ASR transcribes → LLM replies → TTS reads it aloud. Fully offline-capable. **Mobile-friendly**: once it runs on your PC, open it from a phone/tablet browser on the same network for convenient access anywhere. APP repository adapted for this project: https://github.com/wangguanghua2099/talk-with-anyone-app
+A **local-first voice chat agent**: the entire pipeline runs locally with low hardware requirements — smooth on 8 GB VRAM. You speak → ASR transcribes → LLM replies → TTS reads it aloud. Fully offline-capable. **Mobile-friendly**: once it runs on your PC, open it from a phone/tablet browser on the same network for convenient access anywhere. 
+APP repository adapted for this project: https://github.com/wangguanghua2099/talk-with-anyone-app
+Compatible with the ESP32 smart speaker frontend. Repository: https://github.com/wangguanghua2099/talk-with-anyone-esp32
 
 **English** | [简体中文](./README.md)
 

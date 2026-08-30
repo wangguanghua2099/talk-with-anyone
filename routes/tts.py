@@ -105,17 +105,60 @@ async def tts_stream_websocket(websocket: WebSocket):
                 continue
 
             sample_rate = getattr(engine, 'sample_rate', 24000)
-            await websocket.send_json({"type": "audio.start", "sample_rate": sample_rate})
+            # 客户端可指定目标采样率（嵌入式端由服务端重采样，避免低端设备做浮点运算）
+            target_rate = data.get("sample_rate") or None
+            try:
+                target_rate = int(target_rate) if target_rate else None
+            except (TypeError, ValueError):
+                target_rate = None
+            await websocket.send_json({"type": "audio.start",
+                                       "sample_rate": target_rate or sample_rate})
 
             try:
+                # 大块音频切成小块发送（约 170ms@24k），
+                # 单条 WebSocket 消息过大会压垮嵌入式客户端的接收缓冲区
+                # 客户端可在请求里带 sample_rate，由服务端高质量重采样
+                # （scipy resample_poly），客户端直通播放不做二次处理
+                from starlette.websockets import WebSocketState
+                from math import gcd
+                from scipy.signal import resample_poly
+
+                src_rate = int(sample_rate)          # 引擎原生采样率（如 24000）
+                CHUNK_SAMPLES = 4096
+                first_piece_logged = False
                 async for audio_chunk in engine.speak_streaming(text, voice):
-                    audio_int16 = np.clip(audio_chunk * 32768, -32768, 32767).astype(np.int16)
-                    chunk_b64 = base64.b64encode(audio_int16.tobytes()).decode("ascii")
-                    await websocket.send_json({
-                        "type": "audio.chunk",
-                        "data": chunk_b64,
-                        "samples": len(audio_chunk),
-                    })
+                    if websocket.client_state != WebSocketState.CONNECTED:
+                        break
+                    total = len(audio_chunk)
+                    for i in range(0, total, CHUNK_SAMPLES):
+                        piece = audio_chunk[i:i + CHUNK_SAMPLES]
+                        # 兼容 numpy / torch 输出
+                        if hasattr(piece, "numpy"):
+                            piece = piece.numpy()
+                        piece = np.asarray(piece, dtype=np.float32)
+
+                        # 按客户端请求的目标采样率高质量重采样（保持 [-1,1] 浮点）
+                        if target_rate and target_rate != src_rate:
+                            g = gcd(src_rate, target_rate)
+                            piece = resample_poly(piece, target_rate // g,
+                                                  src_rate // g).astype(np.float32)
+
+                        audio_int16 = np.clip(piece * 32768, -32768,
+                                              32767).astype(np.int16)
+                        if not first_piece_logged:
+                            first_piece_logged = True
+                            head = audio_int16[:6].tolist()
+                            seg_sum = int(audio_int16[:512].astype(np.int64).sum())
+                            print(f"[TTS][CHK-srv] rate={target_rate or src_rate} "
+                                  f"head={head} sum512={seg_sum} max={int(np.abs(audio_int16).max())}")
+
+                        chunk_b64 = base64.b64encode(
+                            audio_int16.tobytes()).decode("ascii")
+                        await websocket.send_json({
+                            "type": "audio.chunk",
+                            "data": chunk_b64,
+                            "samples": len(audio_int16),
+                        })
 
                 await websocket.send_json({"type": "audio.done"})
             except Exception:
