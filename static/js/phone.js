@@ -12,6 +12,16 @@ const PhoneModule = {
     isPlaying: false,
     isConnecting: false,
     isMicMuted: false,
+    // 流式回复状态（assistant.delta + voice WS 音频）
+    streamPlayer: null,      // voice WS 音频播放器（audio.start/chunk/done）
+    fileAudio: null,         // edge 等无流式引擎的回退：audio.file 逐句播放
+    fileQueue: [],
+    filePlaying: false,
+    receivedAudio: false,    // 本轮是否收到过音频（决定 completed 时要不要兜底朗读）
+    typingCtrl: null,        // 正在打字的 assistant 消息
+    assistantText: "",
+    streamFinalized: false,  // 本轮流式消息是否已收尾（防止 completed 与打断双写）
+    _llmFirstTokenAt: null,  // 收到 LLM 首个文字增量的时刻（出声计时用）
 
     async start() {
         if (this.isActive || this.isConnecting) return;
@@ -45,10 +55,13 @@ const PhoneModule = {
                 this.ws.send(JSON.stringify({ type: "session.start", mode: "chat" }));
                 this.isConnecting = false;
                 this.isActive = true;
-                
+
                 // 开始录音
                 this.startRecording();
-                
+
+                // 在用户手势内解锁音频播放器，避免后续自动播放被浏览器拦截
+                this.ensureStreamPlayer().start(24000);
+
                 // 开始计时
                 this.startTimer();
             };
@@ -88,6 +101,14 @@ const PhoneModule = {
 
         document.getElementById("phoneName").textContent = (char && char.name) || "AI";
         document.getElementById("phoneMessages").innerHTML = "";
+
+        // 新一轮通话前清掉上一通话残留的流式状态
+        this.stopStreamPlayback();
+        if (this.typingCtrl) this.typingCtrl.skip();
+        this.typingCtrl = null;
+        this.assistantText = "";
+        this.streamFinalized = false;
+        this.receivedAudio = false;
 
         overlay.style.display = "flex";
         this.messages = [];
@@ -137,35 +158,75 @@ const PhoneModule = {
                 // 用户开口说话时，打断正在朗读的 AI 回复（barge-in）
                 if (data.speaking) {
                     TTSModule.stop();
+                    this.stopStreamPlayback();
+                    this.finalizePartialAssistant();
                 }
                 this.updateSpeakingUI(data.speaking);
                 break;
 
             case "asr.result":
                 if (data.is_final && data.text) {
+                    // 新一轮回复开始
+                    this.receivedAudio = false;
+                    this.streamFinalized = false;
+                    this._llmFirstTokenAt = null;
                     this.addMessage("user", data.text);
                 }
                 break;
 
+            case "assistant.delta":
+                if (this._llmFirstTokenAt === null) this._llmFirstTokenAt = performance.now();
+                this.appendAssistantDelta(data.text);
+                break;
+
+            case "audio.start":
+                this.receivedAudio = true;
+                // 出声计时：标记后首个音频块排程时触发 onFirstAudio，
+                // 把「LLM首token → 出声」间隔上报后端（对齐 chat.js 流水）
+                this.ensureStreamPlayer().markStreamStart();
+                this.ensureStreamPlayer().start(data.sample_rate || 24000);
+                break;
+
+            case "audio.chunk":
+                if (this.streamPlayer) {
+                    this.streamPlayer.push(data.data);
+                }
+                break;
+
+            case "audio.done":
+                // 整条回复音频推送完毕，队列中剩余的块会继续播完
+                break;
+
+            case "audio.file":
+                // 无流式接口的引擎（如 edge）：逐句合成文件播放
+                this.receivedAudio = true;
+                this.playFileAudio(data.path);
+                break;
+
             case "assistant.completed":
                 if (data.text) {
-                    this.addMessage("assistant", data.text);
-                    // 朗读 AI 回复（先停掉可能仍在朗读的上一条）
-                    if (ConfigModule.get("tts_read_ai", true)) {
+                    this.finishAssistantMessage(data.text);
+                    // 流式模式下音频已随句子推送播放；没收到过音频才走整段朗读兜底
+                    if (!this.receivedAudio && ConfigModule.get("tts_read_ai", true)) {
                         TTSModule.stop();
                         TTSModule.speakAIReply(data.text);
                     }
+                } else {
+                    this.finalizePartialAssistant();
                 }
                 break;
 
             case "assistant.error":
                 console.error("AI 错误:", data.message);
+                this.finalizePartialAssistant();
                 break;
 
             case "interrupt.ack":
                 console.log("已打断");
                 // 后端确认打断生成，同时停掉可能仍在朗读的 TTS
                 TTSModule.stop();
+                this.stopStreamPlayback();
+                this.finalizePartialAssistant();
                 break;
 
             case "session.closed":
@@ -181,10 +242,17 @@ const PhoneModule = {
 
         const div = document.createElement("div");
         div.className = `phone-msg ${role}`;
-        div.innerHTML = `
-            <div class="sender">${role === "user" ? userName : aiName}</div>
-            <div class="content">${text}</div>
-        `;
+        const sender = document.createElement("div");
+        sender.className = "sender";
+        sender.textContent = role === "user" ? userName : aiName;
+        const content = document.createElement("div");
+        content.className = "content";
+        const textEl = document.createElement("span");
+        textEl.className = "msg-text";
+        textEl.textContent = text;
+        content.appendChild(textEl);
+        div.appendChild(sender);
+        div.appendChild(content);
         messagesDiv.appendChild(div);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
 
@@ -197,6 +265,133 @@ const PhoneModule = {
 
         // 同步保存到主聊天
         ChatModule.addMessage(role, text, new Date().toISOString());
+    },
+
+    // ---- 流式回复（assistant.delta + voice WS 音频）----
+
+    appendAssistantDelta(text) {
+        if (this.streamFinalized) return; // 本轮已被打断收尾，丢弃迟到内容
+        if (!this.typingCtrl) {
+            const messagesDiv = document.getElementById("phoneMessages");
+            const div = document.createElement("div");
+            div.className = "phone-msg assistant";
+            const sender = document.createElement("div");
+            sender.className = "sender";
+            sender.textContent = ConfigModule.get("ai_display_name", "AI");
+            const content = document.createElement("div");
+            content.className = "content";
+            const textEl = document.createElement("span");
+            textEl.className = "msg-text";
+            content.appendChild(textEl);
+            div.appendChild(sender);
+            div.appendChild(content);
+            messagesDiv.appendChild(div);
+            this.typingCtrl = TypeWriter.create(textEl, {
+                scrollEl: messagesDiv,
+                clickToSkipEl: div,
+            });
+            this.assistantText = "";
+        }
+        this.assistantText += text;
+        this.typingCtrl.push(text);
+    },
+
+    // 回复正常完成：以后端全文为准，放完打字动画后同步主聊天
+    finishAssistantMessage(fullText) {
+        if (this.streamFinalized) return;
+        if (this.typingCtrl) {
+            if (fullText.length > this.assistantText.length) {
+                this.typingCtrl.push(fullText.slice(this.assistantText.length));
+            }
+            this.typingCtrl.finish();
+        } else {
+            // 没收到过 delta（旧后端/异常），直接整条显示
+            this.addMessage("assistant", fullText);
+        }
+        this.messages.push({
+            role: "assistant",
+            text: fullText,
+            timestamp: new Date().toISOString(),
+        });
+        ChatModule.addMessage("assistant", fullText, new Date().toISOString());
+        this.resetStreamState();
+    },
+
+    // 回复被打断：立即显示已缓冲文字并收尾，不再等 completed
+    finalizePartialAssistant() {
+        if (this.streamFinalized) return;
+        if (this.typingCtrl) {
+            this.typingCtrl.skip();
+            if (this.assistantText.trim()) {
+                this.messages.push({
+                    role: "assistant",
+                    text: this.assistantText,
+                    timestamp: new Date().toISOString(),
+                });
+                ChatModule.addMessage("assistant", this.assistantText, new Date().toISOString());
+            }
+        }
+        this.resetStreamState();
+    },
+
+    resetStreamState() {
+        this.typingCtrl = null;
+        this.assistantText = "";
+        this.streamFinalized = true;
+    },
+
+    ensureStreamPlayer() {
+        if (!this.streamPlayer) {
+            this.streamPlayer = StreamPlayer.create();
+            // 出声计时：AI 语音第一个音频块实际出声时，把
+            // "LLM首token → 出声" 的间隔回传后台展示
+            this.streamPlayer.onFirstAudio = (audibleAt) => {
+                if (this._llmFirstTokenAt === null) return;
+                const lat = Math.round(audibleAt - this._llmFirstTokenAt);
+                this._llmFirstTokenAt = null;   // 每轮只报一次
+                try {
+                    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                        this.ws.send(JSON.stringify({ type: "client_stats", llm_first_token_to_audio_ms: lat }));
+                    }
+                } catch (e) {}
+            };
+        }
+        return this.streamPlayer;
+    },
+
+    stopStreamPlayback() {
+        if (this.streamPlayer) {
+            this.streamPlayer.stop();
+            this.streamPlayer = null;
+        }
+        this.filePlaying = false;
+        this.fileQueue = [];
+        if (this.fileAudio) {
+            this.fileAudio.pause();
+            this.fileAudio = null;
+        }
+    },
+
+    playFileAudio(path) {
+        if (!this.fileAudio) {
+            this.fileAudio = new Audio();
+            this.fileAudio.onended = () => {
+                this.filePlaying = false;
+                if (this.fileQueue.length > 0) {
+                    this.fileAudio.src = this.fileQueue.shift() + "?" + Date.now();
+                    this.filePlaying = true;
+                    this.fileAudio.play().catch(() => {});
+                }
+            };
+        }
+        if (this.filePlaying) {
+            this.fileQueue.push(path);
+        } else {
+            // 加时间戳防缓存（与 TTSModule.playAudio 一致）
+            this.fileAudio.src = path + "?" + Date.now();
+            this.filePlaying = true;
+            this.fileAudio.play().catch(() => {});
+        }
     },
 
     updateSpeakingUI(speaking) {
@@ -213,6 +408,13 @@ const PhoneModule = {
 
         // 停止可能仍在朗读的 AI 回复
         TTSModule.stop();
+
+        // 停止流式音频播放与打字动画
+        this.stopStreamPlayback();
+        if (this.typingCtrl) {
+            this.typingCtrl.skip();
+        }
+        this.resetStreamState();
 
         // 停止录音
         if (this.processor) {

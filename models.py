@@ -4,6 +4,7 @@ from typing import Optional
 
 class ChatRequest(BaseModel):
     message: str
+    stream: bool = False
 
 
 class ConfigUpdate(BaseModel):

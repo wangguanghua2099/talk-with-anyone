@@ -117,6 +117,7 @@ const ReadAloudModule = {
 
     stop() {
         this.cancelReading();
+        if (typeof ChatModule !== 'undefined') ChatModule.stopTTSStream();   // 连续朗读/取消时也作废分句 TTS 流水
         TTSModule.stop();
     },
 

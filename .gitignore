@@ -35,6 +35,7 @@ key.pem
 
 # 音频与测试产物
 static/*.wav
+static/*.mp3
 static/current_audio.*
 static/test_output.wav
 static/stream_diag*.wav
@@ -42,6 +43,7 @@ test_mode*.wav
 /test_*.py
 test_*.wav
 *.wav
+*.mp3
 
 # 本地启动脚本
 启动.bat

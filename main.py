@@ -105,9 +105,11 @@ async def startup_event():
     """服务器启动时预加载模型"""
     from state import tts_manager, load_config
 
-    # 预加载当前 TTS 引擎
+    # 预加载当前 TTS 引擎（edge 为云端引擎无需加载；
+    # 本地引擎不预加载的话，首次合成的模型加载会长时间阻塞事件循环，
+    # 拖慢甚至掐断正在进行的语音 WebSocket 连接）
     config = load_config()
-    if config.get("tts_engine") == "qwen3":
+    if config.get("tts_engine") != "edge":
         print("[STARTUP] 开始预加载 TTS 模型...")
         tts_manager.preload_current_engine()
 
@@ -128,6 +130,10 @@ if __name__ == "__main__":
         # 而 App 端(Dart HttpClient)默认会复用 15s 内的空闲连接，
         # 复用到已被关闭的连接会报"Connection closed before full header"
         uvicorn.run(app, host="0.0.0.0", port=7862, ssl_certfile=cert_file, ssl_keyfile=key_file,
-                    timeout_keep_alive=120)
+                    timeout_keep_alive=120,
+                    # 本地 TTS 模型加载等 GIL 密集操作会短暂阻塞事件循环，
+                    # 默认 20s ping 超时会误杀语音 WebSocket，这里不设超时
+                    ws_ping_interval=20.0, ws_ping_timeout=None)
     else:
-        uvicorn.run(app, host="0.0.0.0", port=7862, timeout_keep_alive=120)
+        uvicorn.run(app, host="0.0.0.0", port=7862, timeout_keep_alive=120,
+                    ws_ping_interval=20.0, ws_ping_timeout=None)

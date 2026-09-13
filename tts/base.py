@@ -1,4 +1,11 @@
+import threading
 from abc import ABC, abstractmethod
+
+# 全局模型加载锁：同一进程内同一时间只允许一个 TTS 引擎加载模型。
+# transformers/faster_qwen3_tts 的 from_pretrained 并发调用会互相干扰
+# （权重停在 meta 设备："Cannot copy out of meta tensor"），
+# 切换引擎时旧引擎加载未完成、新引擎就开始预加载会触发该问题。
+MODEL_LOAD_LOCK = threading.Lock()
 
 
 class BaseTTSEngine(ABC):

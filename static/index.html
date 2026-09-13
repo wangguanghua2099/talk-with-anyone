@@ -99,7 +99,7 @@
                 <button class="btn btn-outline" onclick="toggleTTSReadAI()">
                     <span id="ttsAIIcon">🔊</span> <span data-i18n="aiReplyTTS">AI回复TTS</span>
                 </button>
-                <button class="btn btn-outline" onclick="TTSModule.stop()" data-i18n="stopReading">停止朗读</button>
+                <button class="btn btn-outline" onclick="stopAllTTS()" data-i18n="stopReading">停止朗读</button>
                 <button class="btn btn-outline" id="autoChatBtn" onclick="AutoChatModule.start()" data-i18n="autoChat">AI自聊</button>
                 <button class="btn btn-outline btn-danger" id="stopAutoChatBtn" onclick="AutoChatModule.stop()" style="display:none;" data-i18n="stopAutoChat">停止自聊</button>
                 <button id="phoneBtn" class="btn btn-outline" onclick="PhoneModule.start()" title="电话模式" data-i18n-title="phoneMode">
@@ -236,7 +236,7 @@
                     </label>
                 </div>
                 <div class="btn-row" style="margin-top:8px;">
-                    <button class="btn btn-outline" onclick="TTSModule.stop()" data-i18n="stopReading">停止朗读</button>
+                    <button class="btn btn-outline" onclick="stopAllTTS()" data-i18n="stopReading">停止朗读</button>
                 </div>
                 <div class="progress-bar" id="progressBar">
                     <div class="fill" id="progressFill"></div>
@@ -458,6 +458,7 @@
     <script>I18N.init();</script>
     <script src="/static/js/config.js"></script>
     <script src="/static/js/avatar.js"></script>
+    <script src="/static/js/typewriter.js"></script>
     <script src="/static/js/chat.js"></script>
     <script src="/static/js/tts.js"></script>
     <script src="/static/js/autochat.js"></script>

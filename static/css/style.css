@@ -410,3 +410,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
         z-index: 55;
     }
 }
+
+
+/* ===== 打字机效果（typewriter.js）===== */
+.msg-text { white-space: pre-wrap; word-break: break-word; }
+.typing-cursor {
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    background: currentColor;
+    margin-left: 2px;
+    vertical-align: -0.12em;
+    animation: typing-blink 0.8s steps(1) infinite;
+}
+@keyframes typing-blink { 50% { opacity: 0; } }

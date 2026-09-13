@@ -126,6 +126,8 @@ class MossTTSEngine(BaseTTSEngine):
         import numpy as np
         from ort_cpu_runtime import _compute_stream_lead_seconds
 
+        t0 = _time.perf_counter()
+
         self._sample_rate = int(runtime.codec_meta["codec_config"]["sample_rate"])
         sample_rate = self._sample_rate
 
@@ -192,6 +194,7 @@ class MossTTSEngine(BaseTTSEngine):
                             return
                         if first_emit_time is None:
                             first_emit_time = _time.perf_counter()
+                            print(f"[MOSS TTS] 首包延迟: {first_emit_time - t0:.2f}s")
                         emitted_samples += length
                         decode_count += 1
                         channels = [arr[0, ci, :length].copy().astype(np.float32) for ci in range(arr.shape[1])]

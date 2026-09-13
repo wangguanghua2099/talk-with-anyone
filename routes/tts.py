@@ -87,6 +87,14 @@ async def tts_stream_websocket(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_json()
+
+            # 客户端实测统计：LLM 首token → 用户听到声音 的间隔（文字聊天分句流水上报）
+            if data.get("type") == "client_stats":
+                lat = data.get("llm_first_token_to_audio_ms")
+                if lat is not None:
+                    print(f"[TTS] 客户端实测: LLM首token→出声 {lat} ms")
+                continue
+
             text = data.get("text", "")
             voice = data.get("voice") or load_config().get("ai_voice", "晓晓")
 

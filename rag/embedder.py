@@ -131,16 +131,23 @@ class OpenAICompatEmbedder(EmbeddingBackend):
         return (await self._embed_batch([QUERY_PREFIX + text]))[0]
 
     async def healthy(self) -> bool:
-        """探测嵌入服务是否在线（llama-server 提供 /health）。"""
-        for path in ("/health", "/v1/models"):
+        """探测嵌入服务是否在线（llama-server 提供 /health）。
+
+        嵌入服务多数时间不在线，探测必须快速失败：两条路径并发、
+        单次超时 1 秒，否则状态接口会被防火墙丢包式的连接超时拖到数秒。
+        """
+        import asyncio
+
+        async def _probe(path: str) -> bool:
             try:
-                async with httpx.AsyncClient(timeout=3.0) as client:
+                async with httpx.AsyncClient(timeout=1.0) as client:
                     resp = await client.get(f"{self.url}{path}")
-                if resp.status_code < 400:
-                    return True
+                return resp.status_code < 400
             except Exception:
-                continue
-        return False
+                return False
+
+        results = await asyncio.gather(_probe("/health"), _probe("/v1/models"))
+        return any(results)
 
 
 async def ping_embedder(config: dict) -> dict:

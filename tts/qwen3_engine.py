@@ -152,8 +152,12 @@ class Qwen3TTSEngine(BaseTTSEngine):
         self._COOLDOWN_SECONDS = 60
         self._MAX_ATTEMPTS = 3
         self._preload_task = None
+        # 加载代数：unload 时 +1，使仍在后台进行的加载任务完成后自弃，
+        # 避免模型在"卸载"之后被加载线程赋值回来（幽灵模型占用显存）
+        self._gen = 0
 
     def _load_model_sync(self):
+        gen = self._gen
         if self.model is not None or self._load_complete:
             return
         if self._load_failed and (time.time() - self._last_fail_time) < self._COOLDOWN_SECONDS:
@@ -161,10 +165,15 @@ class Qwen3TTSEngine(BaseTTSEngine):
             print(f"[Qwen3 TTS] 冷却期中，{remaining}秒后重试")
             return
         if self._load_attempts >= self._MAX_ATTEMPTS:
-            self._load_failed = True
-            self._last_fail_time = time.time()
-            print(f"[Qwen3 TTS] 加载失败 {self._MAX_ATTEMPTS} 次，进入 {self._COOLDOWN_SECONDS} 秒冷却期")
-            return
+            # 冷却期已过则重置计数，再给一轮机会（否则三次失败后引擎永久失效）
+            if self._load_failed and (time.time() - self._last_fail_time) >= self._COOLDOWN_SECONDS:
+                self._load_attempts = 0
+                self._load_failed = False
+            else:
+                self._load_failed = True
+                self._last_fail_time = time.time()
+                print(f"[Qwen3 TTS] 加载失败 {self._MAX_ATTEMPTS} 次，进入 {self._COOLDOWN_SECONDS} 秒冷却期")
+                return
         with self._lock:
             if self.model is not None or self._load_complete:
                 return
@@ -174,24 +183,44 @@ class Qwen3TTSEngine(BaseTTSEngine):
             try:
                 import torch
                 from faster_qwen3_tts import FasterQwen3TTS
+                from .base import MODEL_LOAD_LOCK
                 dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-                print(f"[Qwen3 TTS] 正在加载模型 (第 {self._load_attempts + 1} 次): {self.model_name}")
-                self.model = FasterQwen3TTS.from_pretrained(
-                    self.model_name,
-                    device=self.device,
-                    dtype=dtype,
-                    attn_implementation="sdpa",
-                )
-                print(f"[Qwen3 TTS] 模型权重加载完成，正在预热 CUDA 图...")
-                self.model._warmup(100)
-                self._load_complete = True
-                self._load_attempts = 0
-                self._load_failed = False
-                print(f"[Qwen3 TTS] 模型加载 + CUDA 图预热完成，设备: {self.device}")
+                with MODEL_LOAD_LOCK:
+                    # 并发的 from_pretrained 会互相干扰（meta tensor 错误），
+                    # 全局串行化；拿到锁后若已被卸载则直接放弃，不浪费显存
+                    if gen != self._gen or self.model is not None or self._load_complete:
+                        return
+                    print(f"[Qwen3 TTS] 正在加载模型 (第 {self._load_attempts + 1} 次): {self.model_name}")
+                    self.model = FasterQwen3TTS.from_pretrained(
+                        self.model_name,
+                        device=self.device,
+                        dtype=dtype,
+                        attn_implementation="sdpa",
+                    )
+                    if gen != self._gen:
+                        # 加载期间引擎已被卸载（切换引擎）：丢弃本次加载，避免幽灵占用显存
+                        print("[Qwen3 TTS] 加载期间引擎已被卸载，丢弃本次加载的模型")
+                        self.model = None
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                        return
+                    print(f"[Qwen3 TTS] 模型权重加载完成，正在预热 CUDA 图...")
+                    self.model._warmup(100)
+                    self._load_complete = True
+                    self._load_attempts = 0
+                    self._load_failed = False
+                    print(f"[Qwen3 TTS] 模型加载 + CUDA 图预热完成，设备: {self.device}")
             except Exception as e:
                 self._load_attempts += 1
                 self._load_failed = True
                 self._last_fail_time = time.time()
+                self.model = None
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()  # 失败时释放半成品占用的显存
+                except Exception:
+                    pass
                 print(f"[Qwen3 TTS] 模型加载失败 (第 {self._load_attempts} 次): {e}")
             finally:
                 self._loading = False
@@ -202,7 +231,9 @@ class Qwen3TTSEngine(BaseTTSEngine):
         if self._load_failed and (time.time() - self._last_fail_time) < self._COOLDOWN_SECONDS:
             return False
         if self._loading:
-            for _ in range(100):
+            # 冷加载（含 CUDA 图预热）可能需要 20~60s，等到加载完成，
+            # 而不是 10s 后静默返回"模型不可用"（表现为点击朗读没声音）
+            for _ in range(1200):
                 if not self._loading:
                     break
                 await asyncio.sleep(0.1)
@@ -354,6 +385,11 @@ class Qwen3TTSEngine(BaseTTSEngine):
         self.is_playing = False
 
     def unload(self):
+        # 代数 +1 使后台加载任务完成后自弃；未启动的预加载任务直接取消
+        self._gen += 1
+        if self._preload_task and not self._preload_task.done():
+            self._preload_task.cancel()
+        self._preload_task = None
         self.model = None
         self._load_complete = False
         self._loading = False

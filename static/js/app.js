@@ -8,15 +8,17 @@ async function initApp() {
     AvatarModule.init();
     TTSModule.init();
     ReadAloudModule.init();
-    await RAGModule.init();
     await CharacterModule.load();
     updateTTSIcons();
     const tokenInput = document.getElementById('accessTokenInput');
     if (tokenInput) tokenInput.value = getAccessToken();
-    await loadTTSEngine();
+    // 侧栏信息并行加载，不阻塞聊天对话的渲染
+    // （RAG 状态探测在嵌入服务未启动时也可能要等 ~1 秒，绝不能串行挡在前面）
+    RAGModule.init();
+    loadTTSEngine();
+    CustomVoiceModule.load();
     await ConversationModule.loadList();
     await loadConversationMessages();
-    await CustomVoiceModule.load();
 }
 
 async function loadTTSEngine() {
@@ -42,6 +44,13 @@ async function loadConversationMessages() {
 function updateTTSIcons() {
     document.getElementById('ttsUserIcon').textContent = ConfigModule.get('tts_read_user', true) ? '🔊' : '🔇';
     document.getElementById('ttsAIIcon').textContent = ConfigModule.get('tts_read_ai', true) ? '🔊' : '🔇';
+}
+
+// "停止朗读"按钮总入口：停止当前播放/合成，并作废文字聊天的分句 TTS 流水
+//（否则流水会继续把后续句子送去合成播放）
+function stopAllTTS() {
+    TTSModule.stop();
+    if (typeof ChatModule !== 'undefined') ChatModule.stopTTSStream();
 }
 
 function toggleTTSReadUser() {
